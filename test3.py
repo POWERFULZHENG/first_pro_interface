@@ -68,6 +68,8 @@ class MW(Ui_Form, QWidget):
         self.pushButton.clicked.connect(self.upLoadImage)
         
         self.label.setPixmap(QPixmap("./images/Python.png"))
+        #设置label标签的大小
+        self.label.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self.tableWidget.itemClicked.connect(self.clicked)
         self.tableWidget.itemDoubleClicked.connect(self.clicked)
         
@@ -116,11 +118,22 @@ class MW(Ui_Form, QWidget):
         global path
         row = qModelIndex.row()
         if row >= 0 and row < len(self.imgPathName):#判断是否在该数组的范围内
-            self.label.setPixmap(QPixmap(self.imgPathName[row]))
+            #缩放图片，自适应窗口——new
+            image = QPixmap(self.imgPathName[row])
+            # 获取标签的大小
+            label_size = self.label.size()            
+            # 获取图片的原始大小
+            image_size = image.size()           
+            # 计算缩放比例
+            scale_factor = min(label_size.width() / image_size.width(), label_size.height() / image_size.height())            
+            # 缩放图片
+            scaled_image = image.scaled(image_size * scale_factor)
+            self.label.setPixmap(scaled_image)
             path = self.imgPathName[row]
             print(path)
     
     #自适应窗口大小调整label标签的图片，主窗口需要继承自类QMainWindow，并正确地调用了父类的resizeEvent方法
+    #resizeEvent是QWidget类（或其子类）的一个事件处理函数。它用于处理窗口或控件的大小调整事件。
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self.label.setScaledContents(True)
