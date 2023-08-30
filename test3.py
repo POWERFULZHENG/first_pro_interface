@@ -1,3 +1,4 @@
+import threading
 from PyQt5 import QtWidgets
 from PyQt5 import QtCore
 from PyQt5 import QtGui
@@ -18,98 +19,118 @@ class UploadThread(QThread):
     def __init__(self, file_paths):
         super(UploadThread, self).__init__()
         self.file_paths = file_paths
+        #取消进度框标志
+        self.is_canceled = False
+        # 获取当前活动的线程数
+        self.active_threads = get_active_thread_count()
+        print("当前活动线程数：", self.active_threads) 
         
     def run(self):
-        url = "http://example.com/upload"  # 上传服务器的 URL
-        # 创建网络访问管理器和请求对象
-        # manager = QNetworkAccessManager()
-        
-        # total_files = len(self.file_paths)
-        # uploaded_files = 0        
-        # for file_path in self.file_paths:
-        #     request = QNetworkRequest(QUrl(url))
-        #     # 打开待上传的文件
-        #     file = open(file_path, "rb")
-        #     # 设置请求头，指定 Content-Type
-        #     request.setHeader(QNetworkRequest.ContentTypeHeader, "image/jpeg")
-        #     # 获取文件大小
-        #     file_size = os.path.getsize(file_path)
-            
-        #     file_content = file.read()  # 读取文件内容
-        #     byte_array = QByteArray(file_content)  # 将文件内容存储在 QByteArray 中
-        #     # 发送请求并读取响应
-        #     reply = manager.put(request, byte_array)
-        #     # 读取响应数据，模拟上传过程
-        #     bytes_uploaded = 0
-        #     while not reply.isFinished():
-        #         data = reply.readAll()
-        #         bytes_uploaded += len(data)           
-        #         # 计算上传进度
-        #         progress = int(bytes_uploaded / file_size * 100)
-        #         # 发送上传进度信号
-        #         self.progressUpdated.emit(progress)
-        #     file.close()
-            
-        #     uploaded_files += 1
-        #     # 计算总体进度           
-        #     total_progress = int(uploaded_files / total_files * 100)
+        print("-----UploadThread线程开启------")     
+        total_files = len(self.file_paths)
+        uploaded_files = 0
+        total_progress = 0     
+        for i in range(total_files):
+            if self.is_canceled:
+                break           
+            uploaded_files += 1
+            #这里模拟待处理的功能，需要放置功能代码
+            time.sleep(2)
+            # 计算总体进度           
+            total_progress = int(uploaded_files / total_files * 100)
+            #一定得这样判断，否者得点击两次取消按钮才行
+            if not self.is_canceled:
             # 发送总体进度信号
-        self.progressUpdated.emit(50)
-        time.sleep(5)
-        self.finished.emit(1)
+                self.progressUpdated.emit(total_progress)
+        if 100 == total_progress:    
+            self.finished.emit(1)                 
+    def cancel_upload(self):
+        self.is_canceled = True
+
 
 class MW(Ui_Form, QWidget):
     def __init__(self, parent=None):
         super(MW, self).__init__()
         self.setupUi(self)
         
-        self.imgName = []  # 用来存储图片的名字
-        self.imgPathName = []  # 用来存储图片的路径+名字
+        self.imgName = []  # 用来存储全部图片的名字
+        self.imgPathName = []  # 用来存储全部图片的路径+名字
+        self.imgPathNames = []  # 用来存储图片的路径+名字
         self.pushButton.clicked.connect(self.upLoadImage)
+        self.uploadButton.clicked.connect(self.creatProgressDialog)
         
         self.label.setPixmap(QPixmap("./images/Python.png"))
         #设置label标签的大小
         self.label.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        self.tableWidget.itemClicked.connect(self.clicked)
-        self.tableWidget.itemDoubleClicked.connect(self.clicked)
+        self.tableWidget1.itemClicked.connect(self.clicked)
+        self.tableWidget1.itemDoubleClicked.connect(self.clicked)
         
-        self.tableWidget.setContextMenuPolicy(Qt.CustomContextMenu)  # 右键菜单
-        self.tableWidget.customContextMenuRequested.connect(self.rightMenuShow)
+        self.tableWidget1.setContextMenuPolicy(Qt.CustomContextMenu)  # 右键菜单
+        self.tableWidget1.customContextMenuRequested.connect(self.rightMenuShow)
         
-        #多线程进度条部分
-        self.uploadThread = None
+        # self.status_bar = self.statusBar()
+        # self.statusBar().showMessage("Status: Updated")        
     
     #上传图片到系统    
     def upLoadImage(self):
-        global imgPathNames
-        imgPathNames, imgType = QtWidgets.QFileDialog.getOpenFileNames(self, "多文件选择", "/", "图像文件 (*.png *.jpg *.jpeg)")
+        self.imgPathNames, imgType = QtWidgets.QFileDialog.getOpenFileNames(self, "多文件选择", "/", "图像文件 (*.png *.jpg *.jpeg)")
         
-        fileNames = [QFileInfo(fileName).fileName() for fileName in imgPathNames]  # 提取图片的名字
+        fileNames = [QFileInfo(fileName).fileName() for fileName in self.imgPathNames]  # 提取图片的名字
         self.imgName.extend(fileNames)  # 收集图片的名字
-        self.imgPathName.extend(imgPathNames)  # 收集图片的路径+名字
+        self.imgPathName.extend(self.imgPathNames)  # 收集图片的路径+名字
         
-        self.tableWidget.clearContents()  # 清除表格内容
-        self.tableWidget.setRowCount(len(self.imgName)) # 设置行数
+        self.tableWidget1.clearContents()  # 清除表格内容
+        self.tableWidget1.setRowCount(len(self.imgName)) # 设置行数
         for row, (imgName_1, imgPathName_1) in enumerate(zip(self.imgName, self.imgPathName)):#zip组合他们俩，返回元组，用到了枚举循环遍历
             nameItem = QTableWidgetItem(imgName_1)#创建QTableWidgetItem对象，填充表格
-            self.tableWidget.setItem(row, 0, nameItem)
-        
+            self.tableWidget1.setItem(row, 0, nameItem)
+        #路径显示   
+        self.image_directory = os.path.dirname(str(self.imgPathNames[0]))#变量得是实例变量，否则不显示
+        self.textEdit.setPlainText(f"-----本次处理的图片所在路径:{self.image_directory}-----\n")                     
+    
+    #创建进度条    
+    def creatProgressDialog(self):
         #进度条部分+创建线程
-        if imgPathNames:
-            self.progressBar.setValue(0)
-            self.imageLabel.clear()
-            self.uploadThread = UploadThread(imgPathNames)
-            self.uploadThread.progressUpdated.connect(self.updateProgress)
-            self.uploadThread.finished.connect(self.uploadFinished)
-            self.uploadThread.start()
+        #创建线程
+        self.uploadThread = UploadThread(self.imgPathNames)
+        self.uploadThread.progressUpdated.connect(self.updateProgress)
+        self.uploadThread.finished.connect(self.uploadFinished)            
+        #启动线程
+        self.uploadThread.start()        
+        if self.imgPathNames and self.uploadThread:       
+            self.progress_dialog = QProgressDialog('', '', 0, 100, mw)#需要正确继承父级窗口
+            self.progress_dialog.setFixedSize(400, 200)
+            self.progress_dialog.setWindowTitle('上传中')
+            self.progress_dialog.setLabelText('当前发送进度值')
+            self.progress_dialog.setCancelButtonText('取消')
+            self.progress_dialog.setRange(0, 100)
+            self.progress_dialog.canceled.connect(self.cancel_upload)
+            self.progress_dialog.setAutoClose(True)#value为最大值时自动关闭
+            self.progress_dialog.setValue(0)
+            # self.progress_dialog.setModal(True)  # 设置为模态
+            self.progress_dialog.show()#显示出来
     
     #进度条
     def updateProgress(self, progress):
-        self.progressBar.setValue(progress)
+        #判断该线程是否存在
+        if self.progress_dialog:
+            self.progress_dialog.setValue(progress)
+            self.textEdit.append("-----发送图片ing-----\n")                    
+
     def uploadFinished(self, is_done):
         if is_done == 1:
-            self.progressBar.setValue(100)
-            self.imageLabel.setText("上传完成！")
+            self.progress_dialog.setValue(100)
+            self.textEdit.append("-----发送成功！-----\n")
+            self.imgPathNames = []
+            self.uploadThread = None
+            
+    def cancel_upload(self):
+        self.imgPathNames = []
+        if self.uploadThread:
+            self.uploadThread.cancel_upload()
+            self.uploadThread.wait()  # 等待线程完成
+            self.progress_dialog.close()
+            self.textEdit.setPlainText("已取消上传文件！\n")
             self.uploadThread = None
     
     #点击表格预览图片    
@@ -141,26 +162,32 @@ class MW(Ui_Form, QWidget):
     
     #右键表格菜单    
     def rightMenuShow(self, pos):
-        rightMenu = QtWidgets.QMenu(self.tableWidget)
+        rightMenu = QtWidgets.QMenu(self.tableWidget1)
         removeAction = QtWidgets.QAction("Delete", self, triggered=self.removeImage)  # triggered 为右键菜单点击后的激活事件
         rightMenu.addAction(removeAction)
         rightMenu.exec_(QtGui.QCursor.pos())
     
     #右键删除项目函数    
     def removeImage(self):
-        selected = self.tableWidget.selectedIndexes()
+        selected = self.tableWidget1.selectedIndexes()
         for index in reversed(selected):
-            self.tableWidget.removeRow(index.row())
+            self.tableWidget1.removeRow(index.row())
             del self.imgName[index.row()]
             del self.imgPathName[index.row()]
         self.updateRowNumbers()
     
     #更新表格行号    
     def updateRowNumbers(self):
-        for row in range(self.tableWidget.rowCount()):
+        for row in range(self.tableWidget1.rowCount()):
             item = QTableWidgetItem(str(row + 1))
-            self.tableWidget.setVerticalHeaderItem(row, item)     
-                     
+            self.tableWidget1.setVerticalHeaderItem(row, item)     
+
+
+def get_active_thread_count():
+    # 获取当前活动的线程数
+    return threading.active_count()  # 减去主线程
+
+                    
 if __name__ == "__main__":
     app = QtWidgets.QApplication(sys.argv)
     mw = MW()
