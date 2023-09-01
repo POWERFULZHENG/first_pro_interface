@@ -58,17 +58,18 @@ def handle_client(client_socket):
             save_path = os.path.join(save_folder, file_name)
             with open(save_path, "wb") as file:
                 received_size = 0
+                j = 0
                 while received_size < file_size:
                     print("调试信息23")
                     data = client_socket.recv(BUFLEN)
                     print("调试信息3")
-                    if not data:
-                        break
                     file.write(data)
                     received_size += len(data)
+                    if len(data) < 1024:
+                        break
                     if received_size >= file_size:
                         break
-                
+                client_socket.sendall("OK".encode())
                 print("调试信息34")
                 data = client_socket.recv(BUFLEN)
                 print("调试信息4")
