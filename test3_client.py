@@ -33,17 +33,9 @@ class UploadThread(QThread):
     def run(self):
         self.client_socket = socket(AF_INET, SOCK_STREAM)
         self.client_socket.connect((self.host, self.port))
-        #调试信息
-        i = 1
-        for file_path in self.file_paths:
-            # if self.is_canceled:
-            #     break
-            self.upload_file(file_path)
-            print(f"次数：{i}")
-            #发送完一个文件就加一
-            self.current_upload_files += 1
-            
-            self.progressUpdated.emit(int(self.current_upload_files / self.total_files * 100))
+
+        self.upload_file(self.file_paths)
+
         #关闭客户端的写方向，但是还可以从服务器读取数据回来   
         # self.client_socket.shutdown(socket.SHUT_WR)
         self.client_socket.shutdown(SHUT_WR)
@@ -54,39 +46,69 @@ class UploadThread(QThread):
         
         self.finished.emit(1)
 
-    def upload_file(self, file_path):
-        #获取文件名
-        file_name = file_path.split('/')[-1]
-        print("文件名字为：" + file_name)
-
-        # 发送文件名并等待服务器响应
-        self.client_socket.sendall(file_name.encode())
-        print("调试信息1")
+    def upload_file(self, file_paths):
+        # 发送文件数量
+        num_files = len(file_paths)
+        print("客户端发送的文件：", num_files)
+        self.client_socket.sendall(str(num_files).encode())
         server_response = self.client_socket.recv(self.BUFLEN)
-        print("调试信息2")
+        #调试信息
+        i = 1
         if server_response == b'OK':
-            # 读取并发送文件内容
-            with open(file_path, "rb") as file:
-                file_data = file.read()
-                file_size = len(file_data)
-                
-                # 发送文件大小
-                self.client_socket.sendall(str(file_size).encode())
-                print("两次ok")
-                # 等待服务器确认
-                server_response = self.client_socket.recv(self.BUFLEN)
+            for file_path in file_paths:
+                # 获取文件名
+                file_name = file_path.split('/')[-1]
+                print("文件名为：" + file_name)
 
+                # 发送文件名并等待服务器响应
+                self.client_socket.sendall(file_name.encode())
+                server_response = self.client_socket.recv(self.BUFLEN)
+                print("调试信息1")
                 if server_response == b'OK':
-                    sent_size = 0
-                    # 发送文件数据
-                    while sent_size < file_size:
-                        print("调试信息3")
-                        data = file.read(self.BUFLEN)
-                        if not data:
-                            break
-                        self.client_socket.sendall(data)
-                        sent_size += len(data)
-                        print("调试信息4")
+                    file_size = os.path.getsize(file_path)
+                    print("文件大小：", file_size)
+                    # 发送文件大小
+                    self.client_socket.sendall(str(file_size).encode())
+                    server_response = self.client_socket.recv(self.BUFLEN)
+                    print("调试信息2")
+                    upload_size = 0
+                    if server_response == b'OK':                           
+                        # 读取并发送文件内容
+                        with open(file_path, "rb") as file:
+                            while upload_size < file_size:
+                                print("调试信息3")
+                                file_data = file.read(self.BUFLEN)
+                                if not file_data:
+                                    break
+                                print("调试信息34")
+                                # 发送文件数据
+                                self.client_socket.sendall(file_data)
+                                upload_size += len(file_data)
+                                print("调试信息4")
+                                if upload_size >= file_size:
+                                    break
+                        # 发送文件结束标记
+                        self.client_socket.sendall(b'EOF')
+                        print("调试信息45")
+                        server_response = self.client_socket.recv(self.BUFLEN)
+                        print("调试信息5")
+                        if server_response == b'OK':
+                            print('文件传输完成')
+                        #调试信息
+                        print(f"次数：{i}")
+                        i += 1
+                        #发送完一个文件就加一
+                        self.current_upload_files += 1            
+                        self.progressUpdated.emit(int(self.current_upload_files / self.total_files * 100))
+        print("调试信息6")
+        # 发送全部文件传输完成标记
+        self.client_socket.sendall(b'FINISH')
+        print("调试信息7")
+        server_response = self.client_socket.recv(self.BUFLEN)
+        print("调试信息8")
+        if server_response == b'OK':
+            print('全部文件传输完成')
+        self.finished.emit(1)
         
     def result_receive_file(self):
         # 接收处理结果

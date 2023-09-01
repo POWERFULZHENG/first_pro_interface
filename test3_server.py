@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 #  === TCP 服务端程序 test3_server.py ===
 # 服务器端代码
 import socket
@@ -22,36 +23,70 @@ def process_image(image_data):
 
 def handle_client(client_socket):
     while True:
-        # 接收文件名
+        # 接收文件数量
         data = client_socket.recv(BUFLEN).decode()
         if not data:
             break
-        file_name = data
-        print('收到文件名:', file_name)
-
-        # 发送确认给客户端
-        client_socket.sendall("OK".encode())
-        print("两次OK中间")
-        
-        # 接收文件大小
-        file_size = int(client_socket.recv(BUFLEN).decode())
+        num_files = int(data)
+        print('文件数量:', num_files)
 
         # 发送确认给客户端
         client_socket.sendall("OK".encode())
 
-        # 接收并保存文件内容
-        save_folder = "uploads"
-        os.makedirs(save_folder, exist_ok=True)
-        save_path = os.path.join(save_folder, file_name)
-        with open(save_path, "wb") as file:
-            received_size = 0
-            while received_size < file_size:
+        for _ in range(num_files):
+            # 接收文件名
+            data = client_socket.recv(BUFLEN).decode()
+            print("调试信息1")
+            if not data:
+                break
+            file_name = data
+            print('收到文件名:', file_name)
+
+            # 发送确认给客户端
+            client_socket.sendall("OK".encode())
+
+            # 接收文件大小
+            file_size = int(client_socket.recv(BUFLEN).decode())
+            print("接收文件大小:", file_size)
+            print("调试信息2")
+            # 发送确认给客户端
+            client_socket.sendall("OK".encode())
+
+            # 接收并保存文件内容
+            save_folder = "uploads"
+            os.makedirs(save_folder, exist_ok=True)
+            save_path = os.path.join(save_folder, file_name)
+            with open(save_path, "wb") as file:
+                received_size = 0
+                while received_size < file_size:
+                    print("调试信息23")
+                    data = client_socket.recv(BUFLEN)
+                    print("调试信息3")
+                    if not data:
+                        break
+                    file.write(data)
+                    received_size += len(data)
+                    if received_size >= file_size:
+                        break
+                
+                print("调试信息34")
                 data = client_socket.recv(BUFLEN)
-                if not data:
-                    break
-                file.write(data)
-                received_size += len(data)
-            print("文件已保存:", save_path)
+                print("调试信息4")
+                if data == b'EOF':
+                    # 发送文件接收完成确认
+                    client_socket.sendall("OK".encode())
+                    print("文件已保存:", save_path)
+
+            print("调试信息5")
+        # 接收全部文件传输完成标记
+        data = client_socket.recv(BUFLEN)
+        # print(data.decode())
+        print("调试信息5")
+        if data == b'FINISH':
+            print('全部文件传输完成')
+            # 发送确认给客户端
+            client_socket.sendall("OK".encode())
+            break
                     
     print('接收完毕，开始处理图片...')
 
