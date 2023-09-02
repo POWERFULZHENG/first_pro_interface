@@ -40,7 +40,7 @@ class UploadThread(QThread):
         # self.client_socket.shutdown(socket.SHUT_WR)
         self.client_socket.shutdown(SHUT_WR)
         
-        self.result = self.result_receive_file()
+        self.result_receive_file()
         
         self.client_socket.close()
         
@@ -83,15 +83,15 @@ class UploadThread(QThread):
                                 # 发送文件数据
                                 self.client_socket.sendall(file_data)
                                 upload_size += len(file_data)
-                                #应该是比较稳妥的判断fan
-                                if len(file_data) < 1024:
-                                    break
+                                #应该是比较稳妥的判断
+                                # if len(file_data) < 1024:
+                                #     break
                                 print("调试信息4")
                                 #调试信息
                                 j += 1
                                 print(file_name, "一个文件发送次数：", j)
-                                if upload_size >= file_size:
-                                    break
+                                # if upload_size >= file_size:
+                                #     break
                         server_response = self.client_socket.recv(self.BUFLEN)
                         if server_response == b'OK':
                             # 发送文件结束标记

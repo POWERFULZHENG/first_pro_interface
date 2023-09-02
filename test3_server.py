@@ -65,10 +65,10 @@ def handle_client(client_socket):
                     print("调试信息3")
                     file.write(data)
                     received_size += len(data)
-                    if len(data) < 1024:
-                        break
-                    if received_size >= file_size:
-                        break
+                    # if len(data) < 1024:
+                    #     break
+                    # if received_size >= file_size:
+                    #     break
                 client_socket.sendall("OK".encode())
                 print("调试信息34")
                 data = client_socket.recv(BUFLEN)
@@ -106,7 +106,7 @@ def handle_client(client_socket):
         print('结果发送完成，关闭连接。')
 
     client_socket.close()
-    #server_socket.close()
+    #server_socket.close()#这里不关闭服务器端的
 
 if __name__ == "__main__":
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
