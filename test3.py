@@ -1,5 +1,4 @@
 import threading
-import typing
 from PyQt5 import QtWidgets
 from PyQt5 import QtCore
 from PyQt5 import QtGui
@@ -12,6 +11,8 @@ from interface import Ui_Form
 from PyQt5.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
 import os
 import time
+import socket
+from socket import *
 
 class UploadThread(QThread):
     """第一个页面设计"""
@@ -19,10 +20,15 @@ class UploadThread(QThread):
     finished = pyqtSignal(int)  # 上传完成信号
     """第三个页面设计"""
     resultReceived = pyqtSignal(str)
+    BUFLEN = 1024
     
-    def __init__(self, file_paths):
+    def __init__(self, file_paths, host, port, parent = None):
         super(UploadThread, self).__init__()
+        self.host = host
+        self.port = port
         self.file_paths = file_paths
+        self.total_files = len(file_paths)
+        self.current_upload_files = 0
         #取消进度框标志
         self.is_canceled = False
         # 获取当前活动的线程数
@@ -31,33 +37,130 @@ class UploadThread(QThread):
         
     def run(self):
         print("-----UploadThread线程开启------")
-        """第一个页面设计"""   
-        total_files = len(self.file_paths)
-        uploaded_files = 0
-        total_progress = 0     
-        for i in range(total_files):
-            if self.is_canceled:
-                break           
-            uploaded_files += 1
-            #这里模拟待处理的功能，需要放置功能代码
-            time.sleep(2)
-            # 计算总体进度           
-            total_progress = int(uploaded_files / total_files * 100)
-            #一定得这样判断，否者得点击两次取消按钮才行
-            if not self.is_canceled:
-            # 发送总体进度信号
-                self.progressUpdated.emit(total_progress)
-        if 100 == total_progress:    
+        self.client_socket = socket(AF_INET, SOCK_STREAM)
+        self.client_socket.connect((self.host, self.port))
+        """第一个页面设计"""
+        self.upload_file(self.file_paths)
+        # 判断是否取消上传文件了
+        if not self.is_canceled:
+            #关闭客户端的写方向，但是还可以从服务器读取数据回来   
+            # self.client_socket.shutdown(socket.SHUT_WR)
+            self.client_socket.shutdown(SHUT_WR)
+            
+            self.result_receive_file()
+            
+            self.client_socket.close()
+        
+        # self.finished.emit(1)  
+        
+    #取消上传图片函数       
+    def cancel_upload(self):
+        self.is_canceled = True
+        
+    #上传图片到服务器函数
+    def upload_file(self, file_paths):
+        # 发送文件数量
+        num_files = len(file_paths)
+        print("客户端发送的文件：", num_files)
+        self.client_socket.sendall(str(num_files).encode())
+        server_response = self.client_socket.recv(self.BUFLEN)
+        #调试信息
+        i = 1
+        if server_response == b'OK':
+            for file_path in file_paths:
+                # 获取文件名
+                file_name = file_path.split('/')[-1]
+                print("文件名为：" + file_name)
+
+                # 发送文件名并等待服务器响应
+                self.client_socket.sendall(file_name.encode())
+                server_response = self.client_socket.recv(self.BUFLEN)
+                print("调试信息1")
+                if server_response == b'OK':
+                    file_size = int(os.path.getsize(file_path))
+                    print("文件大小：", file_size)
+                    # 发送文件大小
+                    self.client_socket.sendall(str(file_size).encode())
+                    server_response = self.client_socket.recv(self.BUFLEN)
+                    print("调试信息2")
+                    upload_size = 0
+                    if server_response == b'OK':                           
+                        # 读取并发送文件内容
+                        with open(file_path, "rb") as file:
+                            j = 0
+                            while upload_size < file_size:
+                                print("调试信息3")
+                                file_data = file.read(self.BUFLEN)
+                                print("调试信息34")
+                                # 发送文件数据
+                                self.client_socket.sendall(file_data)
+                                upload_size += len(file_data)
+                                #取消上传文件，退出内层循环，但是无法撤回已经上传到服务器的文件
+                                if self.is_canceled:
+                                    self.client_socket.close()
+                                    break 
+                                print("调试信息4")
+                                #调试信息
+                                j += 1
+                                print(file_name, "一个文件发送次数：", j)
+                        #判断是否按下了进度条的取消按钮
+                        if not self.is_canceled:
+                            server_response = self.client_socket.recv(self.BUFLEN)
+                            if server_response == b'OK':
+                                # 发送文件结束标记
+                                self.client_socket.sendall(b'EOF')
+                                print("调试信息45")
+                                server_response = self.client_socket.recv(self.BUFLEN)
+                                print("调试信息5")
+                                if server_response == b'OK':
+                                    print('文件传输完成')
+                                #调试信息
+                                print(f"次数：{i}")
+                                i += 1
+                                #发送完一个文件就加一
+                                self.current_upload_files += 1            
+                                self.progressUpdated.emit(int(self.current_upload_files / self.total_files * 100))
+                #取消上传文件，退出外层循环，但是无法撤回已经上传到服务器的文件
+                if self.is_canceled:
+                    self.client_socket.close()
+                    break
+        #判断是否按下了进度条的取消按钮
+        if not self.is_canceled:
+            print("调试信息6")
+            # 发送全部文件传输完成标记
+            self.client_socket.sendall(b'FINISH')
+            print("调试信息7")
+            server_response = self.client_socket.recv(self.BUFLEN)
+            print("调试信息8")
+            if server_response == b'OK':
+                print('全部文件传输完成')
+                
             """第三个页面设计"""
             result = "上传完成"
             self.resultReceived.emit(result)
-            #关闭上传完成线程                 
             self.finished.emit(1)
-    def cancel_upload(self):
-        self.is_canceled = True
+        
+    def result_receive_file(self):
+        # 接收处理结果
+        # result = b''
+        # 接收服务器返回的结果
+        result_folder = "results"
+        os.makedirs(result_folder, exist_ok=True)
+        result_file_path = os.path.join(result_folder, "result.txt")
 
+        with open(result_file_path, "wb") as result_file:
+            while True:
+                data = self.client_socket.recv(self.BUFLEN)
+                if not data:
+                    break
+                # result += data
+                result_file.write(data)
 
 class MW(Ui_Form, QWidget):
+    #客户端的IP设置
+    IP = '192.168.56.1'
+    SERVER_PORT = 50000
+    BUFLEN = 1024
     def __init__(self, parent=None):
         super(MW, self).__init__()
         self.setupUi(self)
@@ -105,13 +208,13 @@ class MW(Ui_Form, QWidget):
     def creatProgressDialog(self):
         #进度条部分+创建线程
         #创建线程
-        self.uploadThread = UploadThread(self.imgPathNames)
+        self.uploadThread = UploadThread(self.imgPathNames, self.IP, self.SERVER_PORT)
         self.uploadThread.progressUpdated.connect(self.updateProgress)
         self.uploadThread.finished.connect(self.uploadFinished)
         """第三个页面设计"""
         self.uploadThread.resultReceived.connect(self.handle_result)           
         #启动线程
-        self.uploadThread.start() 
+        self.uploadThread.start()
         #模态进度条部分       
         if self.imgPathNames and self.uploadThread:       
             self.progress_dialog = QProgressDialog('', '', 0, 100, mw)#需要正确继承父级窗口
@@ -131,15 +234,14 @@ class MW(Ui_Form, QWidget):
         #判断该线程是否存在
         if self.progress_dialog:
             self.progress_dialog.setValue(progress)
-            self.textEdit.append("-----发送图片ing-----\n")                    
+            self.textEdit.append("-----发送图片ing-----\n")                   
 
     def uploadFinished(self, is_done):
         if is_done == 1:
-            self.progress_dialog.setValue(100)
             self.textEdit.append("-----发送成功！-----\n")
             #初始化
             self.imgPathNames = []
-            self.uploadThread = None
+            # self.uploadThread = None
             
     def cancel_upload(self):
         #初始化
@@ -150,7 +252,9 @@ class MW(Ui_Form, QWidget):
             self.progress_dialog.close()
             self.textEdit.setPlainText("已取消上传文件！\n")
             self.uploadThread = None
-    
+
+    """第一个页面设计
+            内容:一个TableWidget"""    
     #点击表格预览图片    
     def clicked(self, qModelIndex):
         # QMessageBox.information(self, "QtableWidget", "你选择了: " + self.imgPathName[qModelIndex.row()])  # 这里要使用完整的路径，用imgPathName
